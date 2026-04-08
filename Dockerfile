@@ -1,28 +1,16 @@
-FROM eclipse-temurin:25-jdk AS build
-WORKDIR /workspace
+FROM python:3.11-slim
 
-COPY .mvn .mvn
-COPY mvnw mvnw
-COPY mvnw.cmd mvnw.cmd
-COPY pom.xml pom.xml
-COPY src src
-
-RUN chmod +x mvnw && ./mvnw -q -DskipTests package
-
-FROM eclipse-temurin:25-jre
 WORKDIR /app
 
-RUN useradd --system --create-home spring
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
-ENV SERVER_PORT=8080 \
-    JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
-EXPOSE 8080
+COPY requirements.txt requirements.txt
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
-COPY --from=build /workspace/target/*.jar app.jar
+COPY . .
 
-RUN chown -R spring:spring /app
-USER spring
+EXPOSE 7860
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 CMD ["sh", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health/readiness HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep 'UP' <&3"]
-
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860}"]

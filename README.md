@@ -1,4 +1,42 @@
+---
+title: AIAutonomousCompanySim
+colorFrom: yellow
+colorTo: red
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # AI Autonomous Company Simulator
+
+## Hugging Face Space (OpenEnv) Deployment
+
+This repository is configured for a Hugging Face Docker Space with OpenEnv-compatible routes.
+
+### Required files for Space
+
+- `Dockerfile` (runs `uvicorn app:app`)
+- `app.py` (exports `app` and `main`)
+- `openenv.yaml` (OpenEnv manifest)
+- `requirements.txt` (Python dependencies)
+
+### Endpoints after deploy
+
+- `POST /reset`
+- `POST /step`
+- `GET /state`
+- `GET /schema`
+- `GET /metadata`
+- `GET /health`
+- `GET /web` (Gradio UI)
+
+### Push flow
+
+```bash
+git add Dockerfile README.md app.py openenv.yaml requirements.txt ml/artifacts/app.py ml/artifacts/openenv.yaml ml/artifacts/requirements.txt
+git commit -m "Configure HF Docker Space with OpenEnv routes"
+git push
+```
 
 Spring Boot backend scaffold for an AI-driven autonomous company simulator.
 
