@@ -1,0 +1,59 @@
+services:
+  app:
+    build:
+      context: .
+    image: ai-autonomous-company-simulator:prod
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      DB_URL: jdbc:postgresql://postgres:5432/aiautonomouscompanysimulator
+      DB_USERNAME: app_user
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: 1.0
+      SIMULATION_ASYNC_ENABLED: "true"
+      SIMULATION_OPERATIONS_MAX_JOB_STALENESS_SECONDS: 180
+    secrets:
+      - spring.datasource.password
+      - spring.ai.openai.api-key
+      - simulation.security.webhook.secret
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/actuator/health/readiness | grep UP"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aiautonomouscompanysimulator
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d aiautonomouscompanysimulator"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+secrets:
+  postgres_password:
+    file: ./ops/secrets/postgres_password.txt
+  spring.datasource.password:
+    file: ./ops/secrets/postgres_password.txt
+  spring.ai.openai.api-key:
+    file: ./ops/secrets/openai_api_key.txt
+  simulation.security.webhook.secret:
+    file: ./ops/secrets/webhook_secret.txt
+
+volumes:
+  postgres-data:
