@@ -7,11 +7,34 @@ runtime:
   sdk: fastapi
   app: app:app
   port: 7860
+graders:
+  - name: revenue_growth
+    entrypoint: graders:revenue_growth
+  - name: user_growth
+    entrypoint: graders:user_growth
+  - name: capital_safety
+    entrypoint: graders:capital_safety
+  - name: cost_reduction
+    entrypoint: graders:cost_reduction
+  - name: satisfaction_floor
+    entrypoint: graders:satisfaction_floor
+  - name: quality_floor
+    entrypoint: graders:quality_floor
+  - name: normalized_reward
+    entrypoint: graders:normalized_reward
+  - name: retention_proxy
+    entrypoint: graders:retention_proxy
+  - name: bankruptcy_avoidance
+    entrypoint: graders:bankruptcy_avoidance
 tasks:
   - id: companiesim_growth_001
     task_id: companiesim_growth_001
+    difficulty: easy
     title: Revenue Growth Sprint
     description: Maximize 30-day revenue and user growth while avoiding bankruptcy.
+    reset_params:
+      task_id: companiesim_growth_001
+      difficulty: easy
     graders:
       - name: revenue_growth
         metric: revenue_growth_pct
@@ -23,12 +46,17 @@ tasks:
         metric: capital_non_negative
         weight: 0.2
     grader:
-      type: weighted
-      count: 3
+      name: revenue_growth
+      metric: revenue_growth_pct
+      weight: 0.5
   - id: companiesim_efficiency_002
     task_id: companiesim_efficiency_002
+    difficulty: medium
     title: Cost Efficiency Run
     description: Reduce operational costs while maintaining customer satisfaction and quality.
+    reset_params:
+      task_id: companiesim_efficiency_002
+      difficulty: medium
     graders:
       - name: cost_reduction
         metric: operational_cost_reduction_pct
@@ -40,12 +68,17 @@ tasks:
         metric: min_product_quality
         weight: 0.2
     grader:
-      type: weighted
-      count: 3
+      name: cost_reduction
+      metric: operational_cost_reduction_pct
+      weight: 0.45
   - id: companiesim_balanced_003
     task_id: companiesim_balanced_003
+    difficulty: hard
     title: Balanced Strategy Challenge
     description: Balance growth, retention, and risk control across a 30-day episode.
+    reset_params:
+      task_id: companiesim_balanced_003
+      difficulty: hard
     graders:
       - name: normalized_reward
         metric: episode_normalized_reward
@@ -57,11 +90,14 @@ tasks:
         metric: bankruptcy_avoidance
         weight: 0.3
     grader:
-      type: weighted
-      count: 3
+      name: normalized_reward
+      metric: episode_normalized_reward
+      weight: 0.4
 benchmark:
   tasks:
     - id: companiesim_growth_001
+      task_id: companiesim_growth_001
+      difficulty: easy
       description: Maximize 30-day revenue and user growth while avoiding bankruptcy.
       graders:
         - name: revenue_growth
@@ -73,7 +109,13 @@ benchmark:
         - name: capital_safety
           metric: capital_non_negative
           weight: 0.2
+      grader:
+        name: revenue_growth
+        metric: revenue_growth_pct
+        weight: 0.5
     - id: companiesim_efficiency_002
+      task_id: companiesim_efficiency_002
+      difficulty: medium
       description: Reduce operational costs while maintaining customer satisfaction and quality.
       graders:
         - name: cost_reduction
@@ -85,7 +127,13 @@ benchmark:
         - name: quality_floor
           metric: min_product_quality
           weight: 0.2
+      grader:
+        name: cost_reduction
+        metric: operational_cost_reduction_pct
+        weight: 0.45
     - id: companiesim_balanced_003
+      task_id: companiesim_balanced_003
+      difficulty: hard
       description: Balance growth, retention, and risk control across a 30-day episode.
       graders:
         - name: normalized_reward
@@ -97,3 +145,7 @@ benchmark:
         - name: bankruptcy_avoidance
           metric: bankruptcy_avoidance
           weight: 0.3
+      grader:
+        name: normalized_reward
+        metric: episode_normalized_reward
+        weight: 0.4

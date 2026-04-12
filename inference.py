@@ -22,6 +22,7 @@ TASKS_WITH_GRADERS = [
     {
         "id": "companiesim_growth_001",
         "task_id": "companiesim_growth_001",
+        "grader": {"name": "revenue_growth", "weight": 0.5},
         "graders": [
             {"name": "revenue_growth", "weight": 0.5},
             {"name": "user_growth", "weight": 0.3},
@@ -31,6 +32,7 @@ TASKS_WITH_GRADERS = [
     {
         "id": "companiesim_efficiency_002",
         "task_id": "companiesim_efficiency_002",
+        "grader": {"name": "cost_reduction", "weight": 0.45},
         "graders": [
             {"name": "cost_reduction", "weight": 0.45},
             {"name": "satisfaction_floor", "weight": 0.35},
@@ -40,6 +42,7 @@ TASKS_WITH_GRADERS = [
     {
         "id": "companiesim_balanced_003",
         "task_id": "companiesim_balanced_003",
+        "grader": {"name": "normalized_reward", "weight": 0.4},
         "graders": [
             {"name": "normalized_reward", "weight": 0.4},
             {"name": "retention_proxy", "weight": 0.3},
