@@ -127,7 +127,7 @@ def _get_task_from_argv(argv):
 def _get_env():
     api_base = os.getenv("API_BASE_URL", DEFAULT_API_BASE_URL).strip() or DEFAULT_API_BASE_URL
     model = os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME).strip() or DEFAULT_MODEL_NAME
-    token = os.getenv("HF_TOKEN", "").strip()
+    token = os.getenv("API_KEY", "").strip() or os.getenv("HF_TOKEN", "").strip()
     return api_base, model, token
 
 
@@ -218,22 +218,39 @@ def _mock_result(task_name):
 
 def _safe_model_call(api_base, model, token, task_name):
     if not token:
-        raise ValueError("HF_TOKEN_missing")
+        raise ValueError("API_KEY_missing")
     try:
         from openai import OpenAI
     except Exception as exc:
         raise RuntimeError("openai_import_failed: {0}".format(_sanitize_error(exc)))
 
     try:
-        # Keep OpenAI official client usage without mandatory network dependency.
-        _ = OpenAI(base_url=api_base, api_key=token, timeout=5.0)
+        client = OpenAI(base_url=api_base, api_key=token, timeout=12.0)
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "Return exactly 3 short lines."},
+                {
+                    "role": "user",
+                    "content": "CEO decision, HR processing, Employee execution for task: {0}".format(task_name),
+                },
+            ],
+            temperature=0.2,
+            max_tokens=90,
+        )
+        content = ""
+        if getattr(completion, "choices", None):
+            first = completion.choices[0]
+            if getattr(first, "message", None):
+                content = (first.message.content or "").strip()
+        lines = [line.strip("-* \t") for line in (content or "").splitlines() if line.strip()]
         return {
-            "ceo_decision": "CEO: Balanced growth with controlled spend for task: {0}".format(task_name),
-            "hr_processing": "HR: Upskill current staff and assign focused pods.",
-            "employee_execution": "EMPLOYEE: Deliver sprint milestones with QA checks.",
+            "ceo_decision": lines[0] if len(lines) > 0 else "CEO: Balanced growth with controlled spend.",
+            "hr_processing": lines[1] if len(lines) > 1 else "HR: Upskill current staff and assign focused pods.",
+            "employee_execution": lines[2] if len(lines) > 2 else "EMPLOYEE: Deliver sprint milestones with QA checks.",
         }
     except Exception as exc:
-        raise RuntimeError("openai_client_init_failure: {0}".format(_sanitize_error(exc)))
+        raise RuntimeError("llm_proxy_call_failed: {0}".format(_sanitize_error(exc)))
 
 
 def run_simulation(task_input):
