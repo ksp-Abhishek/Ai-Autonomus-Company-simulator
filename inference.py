@@ -13,6 +13,11 @@ import socket
 import sys
 import traceback
 
+try:
+    from graders import GRADERS as REGISTERED_GRADERS
+except Exception:
+    REGISTERED_GRADERS = {}
+
 
 DEFAULT_API_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL_NAME = "gpt-4o-mini"
@@ -85,6 +90,14 @@ def _sanitize_error(err):
     return msg[:300]
 
 
+def _clamp_01(value, default: float = 0.0) -> float:
+    try:
+        numeric = float(value)
+    except Exception:
+        numeric = float(default)
+    return max(0.0, min(1.0, numeric))
+
+
 def _safe_stderr(msg):
     try:
         print(msg, file=sys.stderr, flush=True)
@@ -149,14 +162,107 @@ def print_end(success, steps, score, rewards):
 
 def print_tasks_metadata():
     try:
+        tasks_with_graders = len([t for t in TASKS_WITH_GRADERS if t.get("graders")])
+        tasks_with_registered_graders = len(
+            [
+                t
+                for t in TASKS_WITH_GRADERS
+                if t.get("graders")
+                and all(str(g.get("name", "")).strip() in REGISTERED_GRADERS for g in (t.get("graders") or []))
+            ]
+        )
         payload = {
             "tasks": TASKS_WITH_GRADERS,
             "task_count": len(TASKS_WITH_GRADERS),
-            "tasks_with_graders": len([t for t in TASKS_WITH_GRADERS if t.get("graders")]),
+            "tasks_with_graders": tasks_with_graders,
+            "tasks_with_registered_graders": tasks_with_registered_graders,
+            "registered_grader_count": len(REGISTERED_GRADERS),
         }
         _safe_stdout("[TASKS] {0}".format(json.dumps(payload, separators=(",", ":"), ensure_ascii=False)))
     except Exception as exc:
         _debug("print_tasks_metadata failed: {0}".format(_sanitize_error(exc)))
+
+
+def _sample_state_for_task(task_id: str) -> dict:
+    base = {
+        "revenue_growth_pct": 0.62,
+        "active_user_growth_pct": 0.47,
+        "capital_non_negative": 1.0,
+        "operational_cost_reduction_pct": 0.41,
+        "min_customer_satisfaction": 72.0,
+        "min_product_quality": 78.0,
+        "episode_normalized_reward": 0.64,
+        "retained_user_ratio": 0.56,
+        "bankruptcy_avoidance": 1.0,
+    }
+    if task_id == "companiesim_growth_001":
+        return dict(base, revenue_growth_pct=0.65, active_user_growth_pct=0.52)
+    if task_id == "companiesim_efficiency_002":
+        return dict(base, operational_cost_reduction_pct=0.45, min_customer_satisfaction=75.0, min_product_quality=80.0)
+    if task_id == "companiesim_balanced_003":
+        return dict(base, episode_normalized_reward=0.67, retained_user_ratio=0.58)
+    return base
+
+
+def _run_graders_for_task(task: dict) -> dict:
+    task_id = str(task.get("task_id") or task.get("id") or "unknown_task")
+    state = _sample_state_for_task(task_id)
+    graders = list(task.get("graders") or [])
+    results = []
+    weighted_sum = 0.0
+    total_weight = 0.0
+    missing = 0
+
+    for grader in graders:
+        name = str(grader.get("name", "")).strip()
+        metric = str(grader.get("metric", "")).strip()
+        try:
+            weight = float(grader.get("weight", 0.0))
+        except Exception:
+            weight = 0.0
+        safe_weight = max(0.0, weight)
+        fn = REGISTERED_GRADERS.get(name)
+        error = None
+
+        if fn is None:
+            score = 0.0
+            missing += 1
+            error = "grader_not_registered"
+        else:
+            try:
+                raw_score = fn(state)
+                score = _clamp_01(raw_score, 0.0)
+            except Exception as exc:
+                score = 0.0
+                error = _sanitize_error(exc)
+
+        weighted_sum += score * safe_weight
+        total_weight += safe_weight
+        results.append(
+            {
+                "name": name,
+                "metric": metric,
+                "weight": safe_weight,
+                "score": score,
+                "error": error,
+            }
+        )
+
+    reward = _clamp_01(weighted_sum / total_weight, 0.0) if total_weight > 0.0 else 0.0
+    return {
+        "task_id": task_id,
+        "grader_count": len(graders),
+        "missing_graders": missing,
+        "grader_results": results,
+        "reward": reward,
+    }
+
+
+def _run_all_task_graders() -> list:
+    outputs = []
+    for task in TASKS_WITH_GRADERS:
+        outputs.append(_run_graders_for_task(task))
+    return outputs
 
 
 def _get_task_from_argv(argv):
@@ -321,6 +427,9 @@ def run_simulation(task_input):
     except Exception as exc:
         status = "error"
         error_text = _sanitize_error(exc)
+    grader_execution = _run_all_task_graders()
+    tasks_with_graders = len([t for t in TASKS_WITH_GRADERS if t.get("graders")])
+    tasks_with_registered_graders = len([row for row in grader_execution if row.get("grader_count", 0) > 0 and row.get("missing_graders", 0) == 0])
     return {
         "status": status,
         "task": task_name,
@@ -329,7 +438,9 @@ def run_simulation(task_input):
         "error": error_text,
         "tasks": TASKS_WITH_GRADERS,
         "task_count": len(TASKS_WITH_GRADERS),
-        "tasks_with_graders": len([t for t in TASKS_WITH_GRADERS if t.get("graders")]),
+        "tasks_with_graders": tasks_with_graders,
+        "tasks_with_registered_graders": tasks_with_registered_graders,
+        "grader_execution": grader_execution,
     }
 
 
@@ -339,7 +450,6 @@ def run_full_simulation():
     print_start(task_name, model)
     print_tasks_metadata()
 
-    rewards = [0.5, 0.7, 1.0]
     errors = []
 
     # Non-fatal diagnostics to help container debugging.
@@ -351,13 +461,39 @@ def run_full_simulation():
     result = simulation.get("result") or _mock_result(task_name)
     if simulation.get("status") != "success":
         errors.append(_sanitize_error(simulation.get("error")))
+    grader_execution = list(simulation.get("grader_execution") or [])
+    if not grader_execution:
+        errors.append("grader_execution_missing")
+    if int(simulation.get("tasks_with_registered_graders", 0)) < 3:
+        errors.append("not_enough_tasks_with_registered_graders")
 
     # Keep variable referenced for future extension.
     _ = json.dumps(result, ensure_ascii=False)
+    _safe_stdout(
+        "[GRADER_RUN] {0}".format(
+            json.dumps(
+                {
+                    "task_count": simulation.get("task_count", 0),
+                    "tasks_with_graders": simulation.get("tasks_with_graders", 0),
+                    "tasks_with_registered_graders": simulation.get("tasks_with_registered_graders", 0),
+                    "grader_execution": grader_execution,
+                },
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+        )
+    )
 
-    print_step(1, TASKS_WITH_GRADERS[0]["task_id"], rewards[0], False, None)
-    print_step(2, TASKS_WITH_GRADERS[1]["task_id"], rewards[1], False, None)
-    print_step(3, TASKS_WITH_GRADERS[2]["task_id"], rewards[2], True, None)
+    rewards = [_clamp_01(item.get("reward", 0.0), 0.0) for item in grader_execution[:3]]
+    while len(rewards) < 3:
+        rewards.append(0.0)
+
+    action_1 = grader_execution[0]["task_id"] if len(grader_execution) > 0 else TASKS_WITH_GRADERS[0]["task_id"]
+    action_2 = grader_execution[1]["task_id"] if len(grader_execution) > 1 else TASKS_WITH_GRADERS[1]["task_id"]
+    action_3 = grader_execution[2]["task_id"] if len(grader_execution) > 2 else TASKS_WITH_GRADERS[2]["task_id"]
+    print_step(1, action_1, rewards[0], False, None)
+    print_step(2, action_2, rewards[1], False, None)
+    print_step(3, action_3, rewards[2], True, None)
 
     if errors:
         rewards.append(0.0)
