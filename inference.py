@@ -28,6 +28,78 @@ DEFAULT_API_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL_NAME = "gpt-4o-mini"
 DEFAULT_TASK = "autonomous_company_simulation"
 DEFAULT_PORT = 7860
+
+
+def _safe_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _clamp_unit(value, default: float = 0.0) -> float:
+    numeric = _safe_float(value, default)
+    return max(0.0, min(1.0, numeric))
+
+
+def _percent_to_unit(value, default: float = 0.0) -> float:
+    return _clamp_unit(_safe_float(value, default) / 100.0, 0.0)
+
+
+def _fallback_revenue_growth(state: dict) -> float:
+    return _clamp_unit(state.get("revenue_growth_pct", 0.0))
+
+
+def _fallback_user_growth(state: dict) -> float:
+    return _clamp_unit(state.get("active_user_growth_pct", 0.0))
+
+
+def _fallback_capital_safety(state: dict) -> float:
+    return 1.0 if _safe_float(state.get("capital_non_negative", 0.0)) > 0.0 else 0.0
+
+
+def _fallback_cost_reduction(state: dict) -> float:
+    return _clamp_unit(state.get("operational_cost_reduction_pct", 0.0))
+
+
+def _fallback_satisfaction_floor(state: dict) -> float:
+    return _percent_to_unit(state.get("min_customer_satisfaction", 0.0))
+
+
+def _fallback_quality_floor(state: dict) -> float:
+    return _percent_to_unit(state.get("min_product_quality", 0.0))
+
+
+def _fallback_normalized_reward(state: dict) -> float:
+    return _clamp_unit(state.get("episode_normalized_reward", 0.0))
+
+
+def _fallback_retention_proxy(state: dict) -> float:
+    return _clamp_unit(state.get("retained_user_ratio", 0.0))
+
+
+def _fallback_bankruptcy_avoidance(state: dict) -> float:
+    return 1.0 if _safe_float(state.get("bankruptcy_avoidance", 0.0)) > 0.0 else 0.0
+
+
+FALLBACK_GRADERS = {
+    "revenue_growth": _fallback_revenue_growth,
+    "user_growth": _fallback_user_growth,
+    "capital_safety": _fallback_capital_safety,
+    "cost_reduction": _fallback_cost_reduction,
+    "satisfaction_floor": _fallback_satisfaction_floor,
+    "quality_floor": _fallback_quality_floor,
+    "normalized_reward": _fallback_normalized_reward,
+    "retention_proxy": _fallback_retention_proxy,
+    "bankruptcy_avoidance": _fallback_bankruptcy_avoidance,
+}
+
+if not REGISTERED_GRADERS:
+    REGISTERED_GRADERS = dict(FALLBACK_GRADERS)
+else:
+    for _grader_name, _grader_fn in FALLBACK_GRADERS.items():
+        REGISTERED_GRADERS.setdefault(_grader_name, _grader_fn)
+
 _DEFAULT_TASKS_WITH_GRADERS = [
     {
         "id": "companiesim_growth_001",
@@ -35,11 +107,50 @@ _DEFAULT_TASKS_WITH_GRADERS = [
         "title": "Revenue Growth Sprint",
         "difficulty": "easy",
         "description": "Maximize revenue and user growth while avoiding bankruptcy.",
-        "grader": {"name": "revenue_growth", "metric": "revenue_growth_pct", "weight": 0.5},
+        "objective": "Increase revenue and active users over the episode while keeping capital non-negative.",
+        "success_criteria": "Revenue growth >= 0.18, user growth >= 0.12, and capital remains non-negative.",
+        "score_range": {"min": 0.0, "max": 1.0},
+        "grader": {
+            "name": "revenue_growth",
+            "metric": "revenue_growth_pct",
+            "weight": 0.5,
+            "direction": "maximize",
+            "threshold": 0.18,
+            "deterministic": True,
+            "score_min": 0.0,
+            "score_max": 1.0,
+        },
         "graders": [
-            {"name": "revenue_growth", "metric": "revenue_growth_pct", "weight": 0.5},
-            {"name": "user_growth", "metric": "active_user_growth_pct", "weight": 0.3},
-            {"name": "capital_safety", "metric": "capital_non_negative", "weight": 0.2},
+            {
+                "name": "revenue_growth",
+                "metric": "revenue_growth_pct",
+                "weight": 0.5,
+                "direction": "maximize",
+                "threshold": 0.18,
+                "deterministic": True,
+                "score_min": 0.0,
+                "score_max": 1.0,
+            },
+            {
+                "name": "user_growth",
+                "metric": "active_user_growth_pct",
+                "weight": 0.3,
+                "direction": "maximize",
+                "threshold": 0.12,
+                "deterministic": True,
+                "score_min": 0.0,
+                "score_max": 1.0,
+            },
+            {
+                "name": "capital_safety",
+                "metric": "capital_non_negative",
+                "weight": 0.2,
+                "direction": "maximize",
+                "threshold": 1.0,
+                "deterministic": True,
+                "score_min": 0.0,
+                "score_max": 1.0,
+            },
         ],
     },
     {
@@ -48,11 +159,50 @@ _DEFAULT_TASKS_WITH_GRADERS = [
         "title": "Cost Efficiency Run",
         "difficulty": "medium",
         "description": "Reduce operational cost while maintaining satisfaction and quality.",
-        "grader": {"name": "cost_reduction", "metric": "operational_cost_reduction_pct", "weight": 0.45},
+        "objective": "Reduce operational costs without dropping customer satisfaction and product quality below safe floors.",
+        "success_criteria": "Cost reduction >= 0.10, satisfaction >= 0.45, and quality >= 0.45 (all normalized to 0..1 scores).",
+        "score_range": {"min": 0.0, "max": 1.0},
+        "grader": {
+            "name": "cost_reduction",
+            "metric": "operational_cost_reduction_pct",
+            "weight": 0.45,
+            "direction": "maximize",
+            "threshold": 0.1,
+            "deterministic": True,
+            "score_min": 0.0,
+            "score_max": 1.0,
+        },
         "graders": [
-            {"name": "cost_reduction", "metric": "operational_cost_reduction_pct", "weight": 0.45},
-            {"name": "satisfaction_floor", "metric": "min_customer_satisfaction", "weight": 0.35},
-            {"name": "quality_floor", "metric": "min_product_quality", "weight": 0.2},
+            {
+                "name": "cost_reduction",
+                "metric": "operational_cost_reduction_pct",
+                "weight": 0.45,
+                "direction": "maximize",
+                "threshold": 0.1,
+                "deterministic": True,
+                "score_min": 0.0,
+                "score_max": 1.0,
+            },
+            {
+                "name": "satisfaction_floor",
+                "metric": "min_customer_satisfaction",
+                "weight": 0.35,
+                "direction": "maximize",
+                "threshold": 45.0,
+                "deterministic": True,
+                "score_min": 0.0,
+                "score_max": 1.0,
+            },
+            {
+                "name": "quality_floor",
+                "metric": "min_product_quality",
+                "weight": 0.2,
+                "direction": "maximize",
+                "threshold": 45.0,
+                "deterministic": True,
+                "score_min": 0.0,
+                "score_max": 1.0,
+            },
         ],
     },
     {
@@ -61,11 +211,50 @@ _DEFAULT_TASKS_WITH_GRADERS = [
         "title": "Balanced Strategy Challenge",
         "difficulty": "hard",
         "description": "Balance growth, retention, and risk under uncertainty.",
-        "grader": {"name": "normalized_reward", "metric": "episode_normalized_reward", "weight": 0.4},
+        "objective": "Maintain balanced long-horizon performance with strong reward, retention, and bankruptcy avoidance.",
+        "success_criteria": "Normalized reward >= 0.55, retained users >= 0.30, and bankruptcy avoided.",
+        "score_range": {"min": 0.0, "max": 1.0},
+        "grader": {
+            "name": "normalized_reward",
+            "metric": "episode_normalized_reward",
+            "weight": 0.4,
+            "direction": "maximize",
+            "threshold": 0.55,
+            "deterministic": True,
+            "score_min": 0.0,
+            "score_max": 1.0,
+        },
         "graders": [
-            {"name": "normalized_reward", "metric": "episode_normalized_reward", "weight": 0.4},
-            {"name": "retention_proxy", "metric": "retained_user_ratio", "weight": 0.3},
-            {"name": "bankruptcy_avoidance", "metric": "bankruptcy_avoidance", "weight": 0.3},
+            {
+                "name": "normalized_reward",
+                "metric": "episode_normalized_reward",
+                "weight": 0.4,
+                "direction": "maximize",
+                "threshold": 0.55,
+                "deterministic": True,
+                "score_min": 0.0,
+                "score_max": 1.0,
+            },
+            {
+                "name": "retention_proxy",
+                "metric": "retained_user_ratio",
+                "weight": 0.3,
+                "direction": "maximize",
+                "threshold": 0.3,
+                "deterministic": True,
+                "score_min": 0.0,
+                "score_max": 1.0,
+            },
+            {
+                "name": "bankruptcy_avoidance",
+                "metric": "bankruptcy_avoidance",
+                "weight": 0.3,
+                "direction": "maximize",
+                "threshold": 1.0,
+                "deterministic": True,
+                "score_min": 0.0,
+                "score_max": 1.0,
+            },
         ],
     },
 ]
