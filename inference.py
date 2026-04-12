@@ -18,12 +18,17 @@ try:
 except Exception:
     REGISTERED_GRADERS = {}
 
+try:
+    from tasks import get_tasks as _get_registered_tasks
+except Exception:
+    _get_registered_tasks = None
+
 
 DEFAULT_API_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL_NAME = "gpt-4o-mini"
 DEFAULT_TASK = "autonomous_company_simulation"
 DEFAULT_PORT = 7860
-TASKS_WITH_GRADERS = [
+_DEFAULT_TASKS_WITH_GRADERS = [
     {
         "id": "companiesim_growth_001",
         "task_id": "companiesim_growth_001",
@@ -64,6 +69,21 @@ TASKS_WITH_GRADERS = [
         ],
     },
 ]
+
+
+def _load_tasks_with_graders() -> list:
+    if _get_registered_tasks is None:
+        return list(_DEFAULT_TASKS_WITH_GRADERS)
+    try:
+        tasks = _get_registered_tasks()
+        if isinstance(tasks, list) and tasks:
+            return tasks
+    except Exception:
+        pass
+    return list(_DEFAULT_TASKS_WITH_GRADERS)
+
+
+TASKS_WITH_GRADERS = _load_tasks_with_graders()
 
 _STATE = {"started": False, "ended": False}
 
