@@ -7,3 +7,41 @@ runtime:
   sdk: fastapi
   app: app:app
   port: 7860
+benchmark:
+  tasks:
+    - id: companiesim_growth_001
+      description: Maximize 30-day revenue and user growth while avoiding bankruptcy.
+      graders:
+        - name: revenue_growth
+          metric: revenue_growth_pct
+          weight: 0.5
+        - name: user_growth
+          metric: active_user_growth_pct
+          weight: 0.3
+        - name: capital_safety
+          metric: capital_non_negative
+          weight: 0.2
+    - id: companiesim_efficiency_002
+      description: Reduce operational costs while maintaining customer satisfaction and quality.
+      graders:
+        - name: cost_reduction
+          metric: operational_cost_reduction_pct
+          weight: 0.45
+        - name: satisfaction_floor
+          metric: min_customer_satisfaction
+          weight: 0.35
+        - name: quality_floor
+          metric: min_product_quality
+          weight: 0.2
+    - id: companiesim_balanced_003
+      description: Balance growth, retention, and risk control across a 30-day episode.
+      graders:
+        - name: normalized_reward
+          metric: episode_normalized_reward
+          weight: 0.4
+        - name: retention_proxy
+          metric: retained_user_ratio
+          weight: 0.3
+        - name: bankruptcy_avoidance
+          metric: bankruptcy_avoidance
+          weight: 0.3
