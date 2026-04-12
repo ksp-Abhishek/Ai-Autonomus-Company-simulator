@@ -18,6 +18,35 @@ DEFAULT_API_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL_NAME = "gpt-4o-mini"
 DEFAULT_TASK = "autonomous_company_simulation"
 DEFAULT_PORT = 7860
+TASKS_WITH_GRADERS = [
+    {
+        "id": "companiesim_growth_001",
+        "task_id": "companiesim_growth_001",
+        "graders": [
+            {"name": "revenue_growth", "weight": 0.5},
+            {"name": "user_growth", "weight": 0.3},
+            {"name": "capital_safety", "weight": 0.2},
+        ],
+    },
+    {
+        "id": "companiesim_efficiency_002",
+        "task_id": "companiesim_efficiency_002",
+        "graders": [
+            {"name": "cost_reduction", "weight": 0.45},
+            {"name": "satisfaction_floor", "weight": 0.35},
+            {"name": "quality_floor", "weight": 0.2},
+        ],
+    },
+    {
+        "id": "companiesim_balanced_003",
+        "task_id": "companiesim_balanced_003",
+        "graders": [
+            {"name": "normalized_reward", "weight": 0.4},
+            {"name": "retention_proxy", "weight": 0.3},
+            {"name": "bankruptcy_avoidance", "weight": 0.3},
+        ],
+    },
+]
 
 _STATE = {"started": False, "ended": False}
 
@@ -274,6 +303,9 @@ def run_simulation(task_input):
         "model": model,
         "result": result,
         "error": error_text,
+        "tasks": TASKS_WITH_GRADERS,
+        "task_count": len(TASKS_WITH_GRADERS),
+        "tasks_with_graders": len([t for t in TASKS_WITH_GRADERS if t.get("graders")]),
     }
 
 
@@ -298,9 +330,9 @@ def run_full_simulation():
     # Keep variable referenced for future extension.
     _ = json.dumps(result, ensure_ascii=False)
 
-    print_step(1, "CEO_decision", rewards[0], False, None)
-    print_step(2, "HR_processing", rewards[1], False, None)
-    print_step(3, "Employee_execution", rewards[2], True, None)
+    print_step(1, TASKS_WITH_GRADERS[0]["task_id"], rewards[0], False, None)
+    print_step(2, TASKS_WITH_GRADERS[1]["task_id"], rewards[1], False, None)
+    print_step(3, TASKS_WITH_GRADERS[2]["task_id"], rewards[2], True, None)
 
     if errors:
         rewards.append(0.0)
